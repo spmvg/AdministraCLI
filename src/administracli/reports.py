@@ -12,10 +12,6 @@ from rich.text import Text
 from administracli.models import Administracli, Categories
 
 # Balance sheet classification
-ASSET_CATEGORIES = [
-    Categories.CROSS_BOOKING,
-]
-
 EQUITY_LIABILITY_CATEGORIES = [
     Categories.CAPITAL,
 ]
@@ -45,6 +41,14 @@ def _sum_by_category(data: Administracli) -> dict[str, Decimal]:
     return totals
 
 
+def _sum_by_bank_account(data: Administracli) -> dict[str, Decimal]:
+    """Sum transaction amounts grouped by bank account."""
+    totals: dict[str, Decimal] = {}
+    for t in data.transactions:
+        totals[t.bank_account] = totals.get(t.bank_account, Decimal(0)) + t.amount
+    return totals
+
+
 def _amount_str(amount: Decimal) -> str:
     """Format a decimal amount for display."""
     return f"{amount:,.2f}"
@@ -53,8 +57,9 @@ def _amount_str(amount: Decimal) -> str:
 def balance_sheet(data: Administracli) -> Panel:
     """Generate a balance sheet with assets on the left, equity/liabilities on the right."""
     totals = _sum_by_category(data)
+    bank_totals = _sum_by_bank_account(data)
 
-    # --- Assets side ---
+    # --- Assets side (bank balances) ---
     assets_table = Table(
         show_header=True,
         show_edge=False,
@@ -65,10 +70,10 @@ def balance_sheet(data: Administracli) -> Panel:
     assets_table.add_column("", justify="right", ratio=2)
 
     assets_total = Decimal(0)
-    for cat in ASSET_CATEGORIES:
-        amount = totals.get(str(cat), Decimal(0))
+    for account in sorted(bank_totals):
+        amount = bank_totals[account]
         assets_total += amount
-        assets_table.add_row(str(cat), _amount_str(amount))
+        assets_table.add_row(account, _amount_str(amount))
 
     assets_table.add_section()
     assets_table.add_row(
@@ -86,15 +91,14 @@ def balance_sheet(data: Administracli) -> Panel:
     eq_table.add_column("Equity & Liabilities", style="cyan", ratio=3)
     eq_table.add_column("", justify="right", ratio=2)
 
-    # Retained earnings come from P&L result
-    pl_result = _net_result(totals)
-
     eq_total = Decimal(0)
     for cat in EQUITY_LIABILITY_CATEGORIES:
         amount = totals.get(str(cat), Decimal(0))
         eq_total += amount
         eq_table.add_row(str(cat), _amount_str(amount))
 
+    # Retained earnings come from P&L result
+    pl_result = _net_result(totals)
     eq_table.add_row("Retained earnings", _amount_str(pl_result))
     eq_total += pl_result
 
@@ -113,10 +117,14 @@ def balance_sheet(data: Administracli) -> Panel:
 
 
 def _net_result(totals: dict[str, Decimal]) -> Decimal:
-    """Compute net result (revenue - costs)."""
-    revenue = sum(totals.get(str(c), Decimal(0)) for c in REVENUE_CATEGORIES)
-    costs = sum(totals.get(str(c), Decimal(0)) for c in COST_CATEGORIES)
-    return revenue - costs
+    """Compute net result: sum of all P&L category amounts.
+
+    Transaction amounts are signed from the bank's perspective
+    (positive = money in, negative = money out), so the net result
+    is simply the sum of all P&L categories.
+    """
+    pl_categories = list(REVENUE_CATEGORIES) + list(COST_CATEGORIES)
+    return sum((totals.get(str(c), Decimal(0)) for c in pl_categories), Decimal(0))
 
 
 def profit_and_loss(data: Administracli) -> Panel:
@@ -164,7 +172,7 @@ def profit_and_loss(data: Administracli) -> Panel:
 
     # --- Net result ---
     table.add_section()
-    net = revenue_total - costs_total
+    net = revenue_total + costs_total
     style = "bold green" if net >= 0 else "bold red"
     table.add_row(
         Text("Net result", style=style),
