@@ -41,8 +41,8 @@ python -m administracli --help
 
 The books are closed when every check passes:
 * Every transaction has a `_category`.
-* Every transaction with category `incoming_invoice` has a `_invoice_id` matched to an `incoming_invoices` `_id`.
-* Every transaction with category `outgoing_invoice` has a `_invoice_id` matched to an `outgoing_invoices` `_id`.
+* Every transaction with category `incoming_invoice` has a `_incoming_invoice_id` matched to an `incoming_invoices` `_id`.
+* Every transaction with category `outgoing_invoice` has a `_outgoing_invoice_id` matched to an `outgoing_invoices` `_id`.
 * Every invoice in `incoming_invoices` is referenced by at least one transaction.
 * Every invoice in `outgoing_invoices` is referenced by at least one transaction.
 
@@ -107,14 +107,16 @@ Each worksheet is a table with column names in the first row and data in subsequ
 
 Categories are assigned to transactions during the interactive TUI. Built-in categories:
 
-| Category           | Description                         |
-|--------------------|-------------------------------------|
-| `capital`          | Owner equity and capital contributions. |
-| `general_costs`    | General business expenses.          |
-| `cross_booking`    | Cross-booking between bank accounts. |
-| `incoming_invoice` | Costs from invoices received.       |
-| `outgoing_invoice` | Revenue from invoices sent.         |
-| `vat`              | Payments of VAT.                    |
+| Category           | Description                              |
+|--------------------|------------------------------------------|
+| `capital`          | Owner equity and capital contributions.  |
+| `general_costs`    | General business expenses.               |
+| `financial_costs`  | Financial costs (e.g. bank fees).        |
+| `financial_revenue`| Financial revenue (e.g. interest).       |
+| `cross_booking`    | Cross-booking between bank accounts.     |
+| `incoming_invoice` | Costs from invoices received.            |
+| `outgoing_invoice` | Revenue from invoices sent.              |
+| `vat`              | Payments of VAT.                         |
 
 ## License
 
