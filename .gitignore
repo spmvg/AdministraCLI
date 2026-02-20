@@ -5,3 +5,4 @@ htmlcov
 dist
 build
 *.xlsx
+*.xlsx#

@@ -16,6 +16,15 @@ from administracli.models import Administracli, Categories
 from administracli.reports import balance_sheet, profit_and_loss
 
 
+def _fmt_date(d) -> str:
+    """Format a date as YYYY-MM-DD, handling both date and datetime objects."""
+    if d is None:
+        return ""
+    if hasattr(d, "strftime"):
+        return d.strftime("%Y-%m-%d")
+    return str(d)
+
+
 class ReportScreen(Screen):
     """Display balance sheet and profit-and-loss statement."""
 
@@ -50,8 +59,8 @@ class CategoriseScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Label(id="txn-label")
         yield Label(id="progress-label")
+        yield DataTable(id="txn-display")
         yield OptionList(
             *[str(cat) for cat in Categories],
             id="cat-options",
@@ -59,6 +68,9 @@ class CategoriseScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        table = self.query_one("#txn-display", DataTable)
+        table.add_columns("Date", "Amount", "Bank Account", "Description")
+        table.cursor_type = "none"
         self._show_current()
 
     def _show_current(self) -> None:
@@ -66,8 +78,10 @@ class CategoriseScreen(Screen):
             self.app.pop_screen()
             return
         txn = self.uncategorised[self._current]
-        self.query_one("#txn-label", Label).update(
-            f"  {txn.date}    {txn.amount}    {txn.bank_account}    {txn.description or ''}"
+        table = self.query_one("#txn-display", DataTable)
+        table.clear()
+        table.add_row(
+            _fmt_date(txn.date), str(txn.amount), txn.bank_account, txn.description or ""
         )
         self.query_one("#progress-label", Label).update(
             f"Transaction {self._current + 1}/{len(self.uncategorised)} — select a category:"
@@ -114,7 +128,7 @@ class MatchUnmatchedScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Label(id="match-txn-label")
+        yield DataTable(id="match-txn-display")
         yield Label(id="match-progress-label")
         table = DataTable(id="unmatched-table")
         table.cursor_type = "row"
@@ -122,6 +136,9 @@ class MatchUnmatchedScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        txn_table = self.query_one("#match-txn-display", DataTable)
+        txn_table.add_columns("Date", "Amount", "Bank Account", "Description")
+        txn_table.cursor_type = "none"
         self._show_current()
 
     def _show_current(self) -> None:
@@ -129,8 +146,10 @@ class MatchUnmatchedScreen(Screen):
             self.app.pop_screen()
             return
         txn = self.unmatched[self._current]
-        self.query_one("#match-txn-label", Label).update(
-            f"  {txn.date}    {txn.amount}    {txn.bank_account}    {txn.description or ''}"
+        txn_table = self.query_one("#match-txn-display", DataTable)
+        txn_table.clear()
+        txn_table.add_row(
+            _fmt_date(txn.date), str(txn.amount), txn.bank_account, txn.description or ""
         )
         is_incoming = txn._category == Categories.INCOMING_INVOICE
         invoices = self.data.incoming_invoices if is_incoming else self.data.outgoing_invoices
@@ -142,7 +161,7 @@ class MatchUnmatchedScreen(Screen):
         table.clear(columns=True)
         table.add_columns("Date", "Amount", "Counterparty", "_id")
         for inv in invoices:
-            table.add_row(str(inv.date), str(inv.amount), inv.counterparty, inv._id or "")
+            table.add_row(_fmt_date(inv.date), str(inv.amount), inv.counterparty, inv._id or "")
         table.focus()
 
     @on(DataTable.RowSelected, "#unmatched-table")
