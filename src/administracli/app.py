@@ -2,6 +2,8 @@
 AdministraCLI TUI application.
 """
 
+from decimal import Decimal
+
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
@@ -24,6 +26,14 @@ def _fmt_date(d) -> str:
 
 def _get_uncategorised(data: Administracli) -> list[Transaction]:
     return [t for t in data.transactions if t._category is None]
+
+
+def _cross_booking_balance(data: Administracli) -> Decimal:
+    """Sum of all cross_booking transactions. Must be zero for valid books."""
+    return sum(
+        (t.amount for t in data.transactions if t._category == str(Categories.CROSS_BOOKING)),
+        Decimal(0),
+    )
 
 
 def _build_options(data: Administracli) -> list[tuple[str, str, str | None]]:
@@ -66,6 +76,28 @@ class ReportScreen(Screen):
         self.app.exit()
 
 
+class CrossBookingErrorScreen(Screen):
+    """Shown when cross-bookings don't sum to zero."""
+
+    BINDINGS = [("q", "quit_app", "Quit")]
+
+    def __init__(self, imbalance: Decimal) -> None:
+        super().__init__()
+        self.imbalance = imbalance
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(
+            f"\n  ❌ Cross-bookings do not sum to zero (imbalance: {self.imbalance:,.2f}).\n\n"
+            f"  Cross-bookings are transfers between your own bank accounts.\n"
+            f"  They must cancel out. Fix the categorisation in Excel and re-run.\n",
+        )
+        yield Footer()
+
+    def action_quit_app(self) -> None:
+        self.app.exit()
+
+
 class CategoriseScreen(Screen):
     BINDINGS = [("escape", "go_back", "Back")]
 
@@ -94,7 +126,11 @@ class CategoriseScreen(Screen):
 
     def _show_current(self) -> None:
         if self._current >= len(self.uncategorised):
-            self.app.switch_screen(ReportScreen(self.data))
+            imbalance = _cross_booking_balance(self.data)
+            if imbalance != Decimal(0):
+                self.app.switch_screen(CrossBookingErrorScreen(imbalance))
+            else:
+                self.app.switch_screen(ReportScreen(self.data))
             return
 
         txn = self.uncategorised[self._current]
@@ -182,4 +218,8 @@ class AdministracliApp(App):
         if _get_uncategorised(data):
             self.push_screen(CategoriseScreen(data, self.file_path))
         else:
-            self.push_screen(ReportScreen(data))
+            imbalance = _cross_booking_balance(data)
+            if imbalance != Decimal(0):
+                self.push_screen(CrossBookingErrorScreen(imbalance))
+            else:
+                self.push_screen(ReportScreen(data))
