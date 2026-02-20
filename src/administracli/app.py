@@ -6,7 +6,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Label, OptionList, Static
+from textual.widgets import DataTable, Footer, Header, Input, Label, OptionList, Static
 
 from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices
 from administracli.excel_io import load_workbook, save_workbook
@@ -76,11 +76,13 @@ class CategoriseScreen(Screen):
         self.uncategorised = _get_uncategorised(data)
         self._current = 0
         self._options: list[tuple[str, str, str | None]] = []
+        self._filtered_indices: list[int] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Label(id="progress-label")
         yield DataTable(id="txn-display")
+        yield Input(placeholder="Type to filter…", id="filter-input")
         yield OptionList(id="cat-options")
         yield Footer()
 
@@ -110,16 +112,46 @@ class CategoriseScreen(Screen):
         )
 
         self._options = _build_options(self.data)
+        filter_input = self.query_one("#filter-input", Input)
+        filter_input.value = ""
+        self._apply_filter("")
+        filter_input.focus()
+
+    def _apply_filter(self, query: str) -> None:
+        q = query.lower()
+        self._filtered_indices = [
+            i for i, (label, _, _) in enumerate(self._options) if q in label.lower()
+        ]
         option_list = self.query_one("#cat-options", OptionList)
         option_list.clear_options()
-        for label, _, _ in self._options:
-            option_list.add_option(label)
-        option_list.highlighted = 0
-        option_list.focus()
+        for i in self._filtered_indices:
+            option_list.add_option(self._options[i][0])
+        if self._filtered_indices:
+            option_list.highlighted = 0
+
+    @on(Input.Changed, "#filter-input")
+    def on_filter_changed(self, event: Input.Changed) -> None:
+        self._apply_filter(event.value)
+
+    @on(Input.Submitted, "#filter-input")
+    def on_filter_submitted(self, event: Input.Submitted) -> None:
+        """Enter in the filter input selects the highlighted option."""
+        if not self._filtered_indices:
+            return
+        option_list = self.query_one("#cat-options", OptionList)
+        highlighted = option_list.highlighted
+        if highlighted is not None:
+            self._select_option(highlighted)
 
     @on(OptionList.OptionSelected, "#cat-options")
     def on_option_selected(self, event: OptionList.OptionSelected) -> None:
-        _, category, invoice_id = self._options[event.option_index]
+        if not self._filtered_indices:
+            return
+        self._select_option(event.option_index)
+
+    def _select_option(self, filtered_index: int) -> None:
+        original_index = self._filtered_indices[filtered_index]
+        _, category, invoice_id = self._options[original_index]
         txn = self.uncategorised[self._current]
         txn._category = category
 
