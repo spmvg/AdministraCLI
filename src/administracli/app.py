@@ -8,7 +8,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Label, OptionList, Static
+from textual.widgets import DataTable, Footer, Header, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from administracli.closing import ClosingStatus, check_closing
@@ -116,7 +116,7 @@ class CategoriseScreen(Screen):
             with Vertical(id="cat-panel"):
                 yield Label("Category:")
                 options = OptionList(
-                    *[Option(cat.value, id=cat.value) for cat in Categories],
+                    *[Option(str(cat), id=str(cat)) for cat in Categories],
                     id="cat-options",
                 )
                 yield options
