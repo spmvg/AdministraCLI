@@ -10,7 +10,12 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Label, OptionList, Static
 
-from administracli.closing import ClosingStatus, check_closing
+from administracli.closing import (
+    ClosingStatus,
+    check_closing,
+    get_open_incoming_invoices,
+    get_open_outgoing_invoices,
+)
 from administracli.excel_io import load_workbook, save_workbook
 from administracli.models import Administracli, Categories
 from administracli.reports import balance_sheet, profit_and_loss
@@ -45,6 +50,38 @@ class ReportScreen(Screen):
         self.app.exit()
 
 
+def _build_category_options(data: Administracli) -> list[tuple[str, str | None, str | None]]:
+    """Build the list of options for categorisation.
+
+    Returns a list of (label, category, invoice_id) tuples.
+    - For plain categories: (label, category_str, None)
+    - For open invoices: (label, category_str, invoice._id)
+    """
+    options: list[tuple[str, str | None, str | None]] = []
+
+    # Plain categories (excluding invoice categories which are only set via invoice match)
+    for cat in Categories:
+        if cat in (Categories.INCOMING_INVOICE, Categories.OUTGOING_INVOICE):
+            continue
+        options.append((str(cat), str(cat), None))
+
+    # Open incoming invoices (costs / creditors)
+    open_incoming = get_open_incoming_invoices(data)
+    for oi in open_incoming:
+        inv = oi.invoice
+        label = f"⬇ {inv.counterparty}  {inv.amount}  {_fmt_date(inv.date)}  (open: {oi.balance})"
+        options.append((label, str(Categories.INCOMING_INVOICE), inv._id))
+
+    # Open outgoing invoices (revenue / debtors)
+    open_outgoing = get_open_outgoing_invoices(data)
+    for oi in open_outgoing:
+        inv = oi.invoice
+        label = f"⬆ {inv.counterparty}  {inv.amount}  {_fmt_date(inv.date)}  (open: {oi.balance})"
+        options.append((label, str(Categories.OUTGOING_INVOICE), inv._id))
+
+    return options
+
+
 class CategoriseScreen(Screen):
     """Assign categories to uncategorised transactions, one at a time."""
 
@@ -56,15 +93,13 @@ class CategoriseScreen(Screen):
         self.file_path = file_path
         self.uncategorised = list(status.uncategorised)
         self._current = 0
+        self._options: list[tuple[str, str | None, str | None]] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Label(id="progress-label")
         yield DataTable(id="txn-display")
-        yield OptionList(
-            *[str(cat) for cat in Categories],
-            id="cat-options",
-        )
+        yield OptionList(id="cat-options")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -86,94 +121,27 @@ class CategoriseScreen(Screen):
         self.query_one("#progress-label", Label).update(
             f"Transaction {self._current + 1}/{len(self.uncategorised)} — select a category:"
         )
+
+        # Rebuild options each time (open invoices change as we match)
+        self._options = _build_category_options(self.data)
         option_list = self.query_one("#cat-options", OptionList)
+        option_list.clear_options()
+        for label, _, _ in self._options:
+            option_list.add_option(label)
         option_list.highlighted = 0
         option_list.focus()
 
     @on(OptionList.OptionSelected, "#cat-options")
-    def on_category_selected(self, event: OptionList.OptionSelected) -> None:
-        categories = list(Categories)
-        category = categories[event.option_index]
+    def on_option_selected(self, event: OptionList.OptionSelected) -> None:
+        idx = event.option_index
+        _, category, invoice_id = self._options[idx]
+
         txn = self.uncategorised[self._current]
-        txn._category = str(category)
-        save_workbook(self.file_path, self.data)
+        txn._category = category
 
-        if category in (Categories.INCOMING_INVOICE, Categories.OUTGOING_INVOICE):
-            self._current += 1
-            self.app.push_screen(
-                MatchUnmatchedScreen(self.data, self.file_path, [txn])
-            )
-        else:
-            self._current += 1
-            self._show_current()
-
-    def on_screen_resume(self) -> None:
-        self._show_current()
-
-    def action_go_back(self) -> None:
-        self.app.pop_screen()
-
-
-class MatchUnmatchedScreen(Screen):
-    """Walk through unmatched invoice-category transactions one at a time."""
-
-    BINDINGS = [("escape", "go_back", "Back")]
-
-    def __init__(self, data: Administracli, file_path: str, unmatched: list) -> None:
-        super().__init__()
-        self.data = data
-        self.file_path = file_path
-        self.unmatched = list(unmatched)
-        self._current = 0
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield DataTable(id="match-txn-display")
-        yield Label(id="match-progress-label")
-        table = DataTable(id="unmatched-table")
-        table.cursor_type = "row"
-        yield table
-        yield Footer()
-
-    def on_mount(self) -> None:
-        txn_table = self.query_one("#match-txn-display", DataTable)
-        txn_table.add_columns("Date", "Amount", "Bank Account", "Description")
-        txn_table.cursor_type = "none"
-        self._show_current()
-
-    def _show_current(self) -> None:
-        if self._current >= len(self.unmatched):
-            self.app.pop_screen()
-            return
-        txn = self.unmatched[self._current]
-        txn_table = self.query_one("#match-txn-display", DataTable)
-        txn_table.clear()
-        txn_table.add_row(
-            _fmt_date(txn.date), str(txn.amount), txn.bank_account, txn.description or ""
-        )
-        is_incoming = txn._category == Categories.INCOMING_INVOICE
-        invoices = self.data.incoming_invoices if is_incoming else self.data.outgoing_invoices
-        label = "incoming" if is_incoming else "outgoing"
-        self.query_one("#match-progress-label", Label).update(
-            f"Unmatched {self._current + 1}/{len(self.unmatched)} — select an {label} invoice:"
-        )
-        table = self.query_one("#unmatched-table", DataTable)
-        table.clear(columns=True)
-        table.add_columns("Date", "Amount", "Counterparty", "_id")
-        for inv in invoices:
-            table.add_row(_fmt_date(inv.date), str(inv.amount), inv.counterparty, inv._id or "")
-        table.focus()
-
-    @on(DataTable.RowSelected, "#unmatched-table")
-    def on_row_selected(self, event: DataTable.RowSelected) -> None:
-        table = self.query_one("#unmatched-table", DataTable)
-        row_data = table.get_row(event.row_key)
-        invoice_id = row_data[3]
-
-        txn = self.unmatched[self._current]
-        if txn._category == Categories.INCOMING_INVOICE:
+        if category == str(Categories.INCOMING_INVOICE) and invoice_id:
             txn._incoming_invoice_id = invoice_id
-        else:
+        elif category == str(Categories.OUTGOING_INVOICE) and invoice_id:
             txn._outgoing_invoice_id = invoice_id
 
         save_workbook(self.file_path, self.data)
@@ -192,7 +160,6 @@ class DashboardScreen(Screen):
 
     BINDINGS = [
         ("enter", "proceed", "Proceed"),
-        ("r", "refresh", "Refresh"),
         ("q", "quit_app", "Quit"),
     ]
 
@@ -223,33 +190,14 @@ class DashboardScreen(Screen):
             return
 
         n_uncat = len(self.status.uncategorised)
-        n_in = len(self.status.unmatched_incoming)
-        n_out = len(self.status.unmatched_outgoing)
-        n_uref_in = len(self.status.unreferenced_incoming)
-        n_uref_out = len(self.status.unreferenced_outgoing)
 
         lines = [
             Text("Closing status", style="bold underline"),
             Text(""),
-            Text(f"  Uncategorised transactions:       {n_uncat}"),
-            Text(f"  Unmatched incoming invoices:       {n_in}"),
-            Text(f"  Unmatched outgoing invoices:       {n_out}"),
-            Text(f"  Unreferenced incoming invoices:    {n_uref_in}"),
-            Text(f"  Unreferenced outgoing invoices:    {n_uref_out}"),
+            Text(f"  Uncategorised transactions:  {n_uncat}"),
             Text(""),
+            Text("Press Enter to proceed.", style="bold"),
         ]
-
-        if n_uref_in > 0 or n_uref_out > 0:
-            lines.append(Text(
-                "⚠ Unreferenced invoices: add matching transactions in Excel, then refresh.",
-                style="bold yellow",
-            ))
-            lines.append(Text(""))
-
-        if n_uncat > 0 or n_in > 0 or n_out > 0:
-            lines.append(Text("Press Enter to proceed.", style="bold"))
-        else:
-            lines.append(Text("Press [r] to refresh after editing Excel.", style="bold"))
 
         display = self.query_one("#status-display", Static)
         display.update(Text("\n").join(lines))
@@ -261,15 +209,6 @@ class DashboardScreen(Screen):
             self.app.push_screen(
                 CategoriseScreen(self.data, self.file_path, self.status)
             )
-        elif len(self.status.unmatched_incoming) + len(self.status.unmatched_outgoing) > 0:
-            unmatched = self.status.unmatched_incoming + self.status.unmatched_outgoing
-            self.app.push_screen(
-                MatchUnmatchedScreen(self.data, self.file_path, unmatched)
-            )
-
-    def action_refresh(self) -> None:
-        self.data = load_workbook(self.file_path)
-        self._refresh_status()
 
     def action_quit_app(self) -> None:
         self.app.exit()

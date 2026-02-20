@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices
 from administracli.models import Administracli, Categories
 
 # Balance sheet classification
@@ -58,8 +59,10 @@ def balance_sheet(data: Administracli) -> Panel:
     """Generate a balance sheet with assets on the left, equity/liabilities on the right."""
     totals = _sum_by_category(data)
     bank_totals = _sum_by_bank_account(data)
+    open_incoming = get_open_incoming_invoices(data)  # creditors
+    open_outgoing = get_open_outgoing_invoices(data)  # debtors
 
-    # --- Assets side (bank balances) ---
+    # --- Assets side ---
     assets_table = Table(
         show_header=True,
         show_edge=False,
@@ -70,10 +73,21 @@ def balance_sheet(data: Administracli) -> Panel:
     assets_table.add_column("", justify="right", ratio=2)
 
     assets_total = Decimal(0)
+
+    # Bank balances
     for account in sorted(bank_totals):
         amount = bank_totals[account]
         assets_total += amount
         assets_table.add_row(account, _amount_str(amount))
+
+    # Debtors (open outgoing invoices: customers who still owe us)
+    debtors_total = sum(oi.balance for oi in open_outgoing)
+    if debtors_total != Decimal(0):
+        assets_table.add_section()
+        assets_table.add_row(Text("Debtors", style="bold"), "")
+        for oi in open_outgoing:
+            assets_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
+        assets_total += debtors_total
 
     assets_table.add_section()
     assets_table.add_row(
@@ -98,9 +112,18 @@ def balance_sheet(data: Administracli) -> Panel:
         eq_table.add_row(str(cat), _amount_str(amount))
 
     # Retained earnings come from P&L result
-    pl_result = _net_result(totals)
+    pl_result = _net_result(data)
     eq_table.add_row("Retained earnings", _amount_str(pl_result))
     eq_total += pl_result
+
+    # Creditors (open incoming invoices: suppliers we still owe)
+    creditors_total = sum(oi.balance for oi in open_incoming)
+    if creditors_total != Decimal(0):
+        eq_table.add_section()
+        eq_table.add_row(Text("Creditors", style="bold"), "")
+        for oi in open_incoming:
+            eq_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
+        eq_total += creditors_total
 
     eq_table.add_section()
     eq_table.add_row(
@@ -116,20 +139,35 @@ def balance_sheet(data: Administracli) -> Panel:
     )
 
 
-def _net_result(totals: dict[str, Decimal]) -> Decimal:
-    """Compute net result: sum of all P&L category amounts.
+def _net_result(data: Administracli) -> Decimal:
+    """Compute net result: sum of all P&L category transaction amounts
+    plus open invoice balances (revenue not yet received, costs not yet paid).
 
     Transaction amounts are signed from the bank's perspective
-    (positive = money in, negative = money out), so the net result
-    is simply the sum of all P&L categories.
+    (positive = money in, negative = money out).
+    Open outgoing invoices add to revenue (debtor = earned but not received).
+    Open incoming invoices add to costs (creditor = incurred but not yet paid).
     """
+    totals = _sum_by_category(data)
+    open_incoming = get_open_incoming_invoices(data)
+    open_outgoing = get_open_outgoing_invoices(data)
+
     pl_categories = list(REVENUE_CATEGORIES) + list(COST_CATEGORIES)
-    return sum((totals.get(str(c), Decimal(0)) for c in pl_categories), Decimal(0))
+    result = sum((totals.get(str(c), Decimal(0)) for c in pl_categories), Decimal(0))
+
+    # Open outgoing invoices = revenue earned but not yet received
+    result += sum(oi.balance for oi in open_outgoing)
+    # Open incoming invoices = costs incurred but not yet paid (balance is positive = we owe)
+    result -= sum(oi.balance for oi in open_incoming)
+
+    return result
 
 
 def profit_and_loss(data: Administracli) -> Panel:
     """Generate a profit-and-loss statement: revenue first, then costs, then net result."""
     totals = _sum_by_category(data)
+    open_incoming = get_open_incoming_invoices(data)
+    open_outgoing = get_open_outgoing_invoices(data)
 
     table = Table(
         show_header=True,
@@ -149,6 +187,12 @@ def profit_and_loss(data: Administracli) -> Panel:
         revenue_total += amount
         table.add_row(f"  {cat}", _amount_str(amount), "")
 
+    # Open outgoing invoices = revenue earned but not yet received
+    debtors_total = sum(oi.balance for oi in open_outgoing)
+    if debtors_total != Decimal(0):
+        table.add_row("  Debtors (open invoices)", _amount_str(debtors_total), "")
+        revenue_total += debtors_total
+
     table.add_row(
         Text("Total revenue", style="bold"),
         "",
@@ -163,6 +207,12 @@ def profit_and_loss(data: Administracli) -> Panel:
         amount = totals.get(str(cat), Decimal(0))
         costs_total += amount
         table.add_row(f"  {cat}", _amount_str(amount), "")
+
+    # Open incoming invoices = costs incurred but not yet paid
+    creditors_total = sum(oi.balance for oi in open_incoming)
+    if creditors_total != Decimal(0):
+        table.add_row("  Creditors (open invoices)", _amount_str(-creditors_total), "")
+        costs_total -= creditors_total
 
     table.add_row(
         Text("Total costs", style="bold"),

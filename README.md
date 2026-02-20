@@ -41,12 +41,15 @@ python -m administracli --help
 
 The books are closed when every check passes:
 * Every transaction has a `_category`.
-* Every transaction with category `incoming_invoice` has a `_incoming_invoice_id` matched to an `incoming_invoices` `_id`.
-* Every transaction with category `outgoing_invoice` has a `_outgoing_invoice_id` matched to an `outgoing_invoices` `_id`.
-* Every invoice in `incoming_invoices` is referenced by at least one transaction.
-* Every invoice in `outgoing_invoices` is referenced by at least one transaction.
 
-Note: `incoming_invoices` are invoices received from suppliers (costs). `outgoing_invoices` are invoices sent to customers (revenue).
+When categorising transactions, open invoices (not fully paid) are shown alongside the categories.
+Selecting an open invoice sets both the category and the invoice match in one step.
+
+### Open invoices
+
+An invoice is _open_ when the sum of its matched transactions does not cover its full amount.
+* Open incoming invoices appear as **creditors** (liabilities) in the balance sheet and as costs in the P&L.
+* Open outgoing invoices appear as **debtors** (assets) in the balance sheet and as revenue in the P&L.
 
 ### Reports
 
