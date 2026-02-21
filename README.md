@@ -25,8 +25,8 @@ Once everything is categorised, the balance sheet and profit-and-loss statement 
 CIT advance payments are categorised as `Corporate income tax` like any other transaction.
 The definitive CIT amount can be set in the `settings` sheet (`cit_amount`).
 
-- **Not yet assessed**: advances show as *CIT prepayment* on the balance sheet; P&L shows advances as the tax expense.
-- **Assessed**: the definitive amount is the P&L tax expense. The difference between advances paid and the definitive amount shows as *CIT receivable* (overpaid) or *CIT payable* (underpaid) on the balance sheet.
+- **Not yet assessed**: advances show as *CIT prepayment* on the balance sheet. Nothing appears in the P&L.
+- **Assessed**: the definitive amount appears as tax expense in the P&L. The difference between advances paid and the definitive amount shows as *CIT receivable* (overpaid) or *CIT payable* (underpaid) on the balance sheet.
 
 ## License
 

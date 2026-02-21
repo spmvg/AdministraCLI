@@ -187,11 +187,10 @@ def _result_before_tax(data: Administracli) -> Decimal:
 
 def _cit_expense(data: Administracli) -> Decimal:
     """CIT shown as expense in P&L.
-    If definitive amount is set, use that. Otherwise use advances paid."""
+    Only the definitive amount appears in P&L. If not yet assessed, nothing."""
     if data.cit_amount is not None:
         return data.cit_amount  # positive = tax owed
-    # Advances are negative transactions (money out), so negate to get positive expense
-    return -_cit_advances(data)
+    return Decimal(0)
 
 
 def _net_result(data: Administracli) -> Decimal:
@@ -267,11 +266,8 @@ def profit_and_loss(data: Administracli) -> Panel:
 
     # --- Corporate income tax ---
     cit = _cit_expense(data)
-    if cit != Decimal(0) or data.cit_amount is not None:
-        cit_label = "Corporate income tax"
-        if data.cit_amount is None:
-            cit_label += " (advances)"
-        table.add_row(f"  {cit_label}", _amount_str(-cit), "")
+    if data.cit_amount is not None:
+        table.add_row("  Corporate income tax", _amount_str(-cit), "")
 
     # --- Net result after tax ---
     net = rbt - cit
