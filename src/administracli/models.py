@@ -15,6 +15,7 @@ class Categories(StrEnum):
     INCOMING_INVOICE = 'Incoming invoice'
     OUTGOING_INVOICE = 'Outgoing invoice'
     VAT = 'VAT'
+    CORPORATE_INCOME_TAX = 'Corporate income tax'
 
 @dataclass
 class Transaction:
@@ -48,3 +49,4 @@ class Administracli:
     transactions: List[Transaction]
     incoming_invoices: List[IncomingInvoice]
     outgoing_invoices: List[OutgoingInvoice]
+    cit_amount: Optional[Decimal] = None  # definitive corporate income tax; None = not yet assessed

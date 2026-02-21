@@ -20,6 +20,7 @@ from administracli.models import (
 TRANSACTIONS_SHEET = "transactions"
 INCOMING_INVOICES_SHEET = "incoming_invoices"
 OUTGOING_INVOICES_SHEET = "outgoing_invoices"
+SETTINGS_SHEET = "settings"
 
 TRANSACTION_COLUMNS = [
     "Date",
@@ -85,6 +86,13 @@ def init_workbook(path: str) -> None:
         for col_idx, col_name in enumerate(columns, start=1):
             ws.cell(row=1, column=col_idx, value=col_name)
 
+    # Settings sheet (key-value pairs)
+    ws = wb.create_sheet(title=SETTINGS_SHEET)
+    ws.cell(row=1, column=1, value="Key")
+    ws.cell(row=1, column=2, value="Value")
+    ws.cell(row=2, column=1, value="cit_amount")
+    ws.cell(row=2, column=2, value=None)
+
     wb.save(path)
 
 
@@ -97,11 +105,13 @@ def load_workbook(path: str) -> Administracli:
     transactions = _load_transactions(path)
     incoming_invoices = _load_incoming_invoices(path)
     outgoing_invoices = _load_outgoing_invoices(path)
+    cit_amount = _load_cit_amount(path)
 
     return Administracli(
         transactions=transactions,
         incoming_invoices=incoming_invoices,
         outgoing_invoices=outgoing_invoices,
+        cit_amount=cit_amount,
     )
 
 
@@ -118,6 +128,24 @@ def _read_sheet(path: str, sheet_name: str, expected_columns: list[str]) -> pd.D
             df[col] = None
 
     return df
+
+
+def _load_cit_amount(path: str) -> Optional[Decimal]:
+    """Load the definitive corporate income tax amount from the settings sheet."""
+    try:
+        df = pd.read_excel(path, sheet_name=SETTINGS_SHEET, engine="openpyxl")
+    except ValueError:
+        return None
+    row = df.loc[df["Key"] == "cit_amount"]
+    if row.empty:
+        return None
+    val = row.iloc[0]["Value"]
+    if pd.isna(val):
+        return None
+    try:
+        return Decimal(str(val))
+    except InvalidOperation:
+        return None
 
 
 def _load_transactions(path: str) -> list[Transaction]:
@@ -181,6 +209,7 @@ def save_workbook(path: str, data: Administracli) -> None:
     _write_transactions(wb, data.transactions)
     _write_invoices(wb, INCOMING_INVOICES_SHEET, INCOMING_INVOICE_COLUMNS, data.incoming_invoices)
     _write_invoices(wb, OUTGOING_INVOICES_SHEET, OUTGOING_INVOICE_COLUMNS, data.outgoing_invoices)
+    _write_settings(wb, data)
 
     wb.save(path)
 
@@ -230,4 +259,12 @@ def _write_invoices(wb: openpyxl.Workbook, sheet_name: str, columns: list[str], 
             if isinstance(value, Decimal):
                 value = float(value)
             ws.cell(row=row_idx, column=col_idx, value=value)
+
+
+def _write_settings(wb: openpyxl.Workbook, data: Administracli) -> None:
+    ws = wb.create_sheet(title=SETTINGS_SHEET)
+    ws.cell(row=1, column=1, value="Key")
+    ws.cell(row=1, column=2, value="Value")
+    ws.cell(row=2, column=1, value="cit_amount")
+    ws.cell(row=2, column=2, value=float(data.cit_amount) if data.cit_amount is not None else None)
 

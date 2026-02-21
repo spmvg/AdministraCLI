@@ -31,6 +31,12 @@ COST_CATEGORIES = [
 ]
 
 
+def _cit_advances(data: Administracli) -> Decimal:
+    """Total CIT advance payments (bank outflow, so negative or zero)."""
+    totals = _sum_by_category(data)
+    return totals.get(str(Categories.CORPORATE_INCOME_TAX), Decimal(0))
+
+
 def _sum_by_category(data: Administracli) -> dict[str, Decimal]:
     """Sum transaction amounts grouped by _category."""
     totals: dict[str, Decimal] = {}
@@ -62,6 +68,16 @@ def balance_sheet(data: Administracli) -> Panel:
     open_incoming = get_open_incoming_invoices(data)  # creditors
     open_outgoing = get_open_outgoing_invoices(data)  # debtors
 
+    # CIT position: advances are negative (money out), so -advances = amount prepaid
+    advances = _cit_advances(data)  # negative or zero
+    advances_paid = -advances  # positive = amount prepaid
+    if data.cit_amount is not None:
+        # Positive cit_amount = tax owed
+        cit_receivable = advances_paid - data.cit_amount  # positive = overpaid (asset), negative = still owed (liability)
+    else:
+        # Not yet assessed: full advance is a prepayment (asset)
+        cit_receivable = advances_paid  # positive = asset
+
     # --- Assets side ---
     assets_table = Table(
         show_header=True,
@@ -88,6 +104,13 @@ def balance_sheet(data: Administracli) -> Panel:
         for oi in open_outgoing:
             assets_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
         assets_total += debtors_total
+
+    # CIT prepayment (asset: overpaid or not yet assessed)
+    if cit_receivable > Decimal(0):
+        assets_table.add_section()
+        label = "CIT prepayment" if data.cit_amount is None else "CIT receivable"
+        assets_table.add_row(label, _amount_str(cit_receivable))
+        assets_total += cit_receivable
 
     assets_table.add_section()
     assets_table.add_row(
@@ -125,6 +148,12 @@ def balance_sheet(data: Administracli) -> Panel:
             eq_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
         eq_total += creditors_total
 
+    # CIT payable (liability: still owe more than paid)
+    if cit_receivable < Decimal(0):
+        eq_table.add_section()
+        eq_table.add_row("CIT payable", _amount_str(-cit_receivable))
+        eq_total += -cit_receivable
+
     eq_table.add_section()
     eq_table.add_row(
         Text("Total equity & liabilities", style="bold"),
@@ -139,15 +168,8 @@ def balance_sheet(data: Administracli) -> Panel:
     )
 
 
-def _net_result(data: Administracli) -> Decimal:
-    """Compute net result: sum of all P&L category transaction amounts
-    plus open invoice balances (revenue not yet received, costs not yet paid).
-
-    Transaction amounts are signed from the bank's perspective
-    (positive = money in, negative = money out).
-    Open outgoing invoices add to revenue (debtor = earned but not received).
-    Open incoming invoices add to costs (creditor = incurred but not yet paid).
-    """
+def _result_before_tax(data: Administracli) -> Decimal:
+    """Compute result before tax from P&L categories and open invoices."""
     totals = _sum_by_category(data)
     open_incoming = get_open_incoming_invoices(data)
     open_outgoing = get_open_outgoing_invoices(data)
@@ -163,8 +185,22 @@ def _net_result(data: Administracli) -> Decimal:
     return result
 
 
+def _cit_expense(data: Administracli) -> Decimal:
+    """CIT shown as expense in P&L.
+    If definitive amount is set, use that. Otherwise use advances paid."""
+    if data.cit_amount is not None:
+        return data.cit_amount  # positive = tax owed
+    # Advances are negative transactions (money out), so negate to get positive expense
+    return -_cit_advances(data)
+
+
+def _net_result(data: Administracli) -> Decimal:
+    """Net result after tax for the balance sheet."""
+    return _result_before_tax(data) - _cit_expense(data)
+
+
 def profit_and_loss(data: Administracli) -> Panel:
-    """Generate a profit-and-loss statement: revenue first, then costs, then net result."""
+    """Generate a profit-and-loss statement: revenue, costs, result before tax, CIT, net result."""
     totals = _sum_by_category(data)
     open_incoming = get_open_incoming_invoices(data)
     open_outgoing = get_open_outgoing_invoices(data)
@@ -220,9 +256,25 @@ def profit_and_loss(data: Administracli) -> Panel:
         Text(_amount_str(costs_total), style="bold"),
     )
 
-    # --- Net result ---
+    # --- Result before tax ---
     table.add_section()
-    net = revenue_total + costs_total
+    rbt = revenue_total + costs_total
+    table.add_row(
+        Text("Result before tax", style="bold"),
+        "",
+        Text(_amount_str(rbt), style="bold"),
+    )
+
+    # --- Corporate income tax ---
+    cit = _cit_expense(data)
+    if cit != Decimal(0) or data.cit_amount is not None:
+        cit_label = "Corporate income tax"
+        if data.cit_amount is None:
+            cit_label += " (advances)"
+        table.add_row(f"  {cit_label}", _amount_str(-cit), "")
+
+    # --- Net result after tax ---
+    net = rbt - cit
     style = "bold green" if net >= 0 else "bold red"
     table.add_row(
         Text("Net result", style=style),
