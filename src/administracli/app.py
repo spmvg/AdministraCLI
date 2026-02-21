@@ -8,7 +8,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Input, Label, OptionList, Static
+from textual.widgets import Footer, Header, Input, Label, OptionList, Static
 
 from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices
 from administracli.excel_io import load_workbook, save_workbook
@@ -113,15 +113,12 @@ class CategoriseScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Label(id="progress-label")
-        yield DataTable(id="txn-display")
+        yield Static(id="txn-display")
         yield Input(placeholder="Type to filter…", id="filter-input")
         yield OptionList(id="cat-options")
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one("#txn-display", DataTable)
-        table.add_columns("Date", "Amount", "Bank Account", "Description")
-        table.cursor_type = "none"
         self._show_current()
 
     def _show_current(self) -> None:
@@ -138,10 +135,11 @@ class CategoriseScreen(Screen):
         done = total - len(self.uncategorised) + self._current
         left = len(self.uncategorised) - self._current
 
-        table = self.query_one("#txn-display", DataTable)
-        table.clear()
-        table.add_row(
-            _fmt_date(txn.date), str(txn.amount), txn.bank_account, txn.description or ""
+        self.query_one("#txn-display", Static).update(
+            f"[bold]Date:[/bold] {_fmt_date(txn.date)}   "
+            f"[bold]Amount:[/bold] {txn.amount}   "
+            f"[bold]Account:[/bold] {txn.bank_account}\n"
+            f"[bold]Description:[/bold] {txn.description or ''}"
         )
         self.query_one("#progress-label", Label).update(
             f"Transaction {done + 1}/{total}  ({left} left) — select a category:"
