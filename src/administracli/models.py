@@ -7,13 +7,13 @@ from typing import List, Optional
 SystemField = Optional  # distinguish optional fields from system fields
 
 class Categories(StrEnum):
-    CAPITAL = 'capital'
-    GENERAL_COSTS = 'general_costs'
-    FINANCIAL_COSTS = 'financial_costs'
-    FINANCIAL_REVENUE = 'financial_revenue'
-    CROSS_BOOKING = 'cross_booking'
-    INCOMING_INVOICE = 'incoming_invoice'
-    OUTGOING_INVOICE = 'outgoing_invoice'
+    CAPITAL = 'Capital'
+    GENERAL_COSTS = 'General costs'
+    FINANCIAL_COSTS = 'Financial costs'
+    FINANCIAL_REVENUE = 'Financial revenue'
+    CROSS_BOOKING = 'Cross booking'
+    INCOMING_INVOICE = 'Incoming invoice'
+    OUTGOING_INVOICE = 'Outgoing invoice'
     VAT = 'VAT'
 
 @dataclass
