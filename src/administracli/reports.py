@@ -162,7 +162,7 @@ def balance_sheet(data: Administracli) -> Panel:
 
     return Panel(
         Columns([assets_table, eq_table], expand=True, equal=True),
-        title="[bold]Balance Sheet[/bold]",
+        title="[bold]Balance Sheet (Differences)[/bold]",
         border_style="green",
         expand=True,
     )

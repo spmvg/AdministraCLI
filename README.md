@@ -20,6 +20,10 @@ python -m administracli run           # categorise and view reports
 Open invoices are shown alongside categories so you can match them in one step.
 Once everything is categorised, the balance sheet and profit-and-loss statement are shown.
 
+TODO: since AdministraCLI doesn't have assets and the transactions are usually just for that year (not the total administration), the balance sheet shows differences, not totals.
+
+TODO: separate AdministraCLI for every year
+
 ## Corporate income tax
 
 CIT advance payments are categorised as `Corporate income tax` like any other transaction.
