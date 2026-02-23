@@ -7,8 +7,10 @@ from decimal import Decimal
 from administracli.closing import get_total_vat_position, get_open_incoming_invoices, get_open_outgoing_invoices
 from administracli.excel_io import init_workbook, load_workbook, save_workbook
 from administracli.models import (
+    Categories,
     IncomingInvoice,
     OutgoingInvoice,
+    Transaction,
     VATDeclaration,
 )
 from administracli.reports import (
@@ -55,6 +57,15 @@ class TestVATComputation(unittest.TestCase):
             _input_vat=None, _id="v1",
         ))
 
+        # VAT advance payment of 10 to tax authority
+        data.transactions.append(Transaction(
+            date=date(2026, 2, 15), amount=Decimal("-10"),
+            bank_account="NL01BANK", description="VAT advance",
+            _id="t1", _incoming_invoice_id=None, _outgoing_invoice_id=None,
+            _vat_declaration_id="v1",
+            _category=str(Categories.VAT),
+        ))
+
         save_workbook(self.path, data)
         self.data = load_workbook(self.path)
         self.decl = self.data.vat_declarations[0]
@@ -94,8 +105,8 @@ class TestVATComputation(unittest.TestCase):
     # -- net VAT position (no payments yet) --
 
     def test_vat_position(self):
-        # owed = 63 + 35 + 26 - 82 = 42
-        self.assertEqual(get_total_vat_position(self.data), Decimal("42"))
+        # owed = 63 + 35 + 26 - 82 = 42, paid = 10, position = 32
+        self.assertEqual(get_total_vat_position(self.data), Decimal("32"))
 
     def test_balance_sheet_balances(self):
         data = self.data
