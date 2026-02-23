@@ -10,7 +10,7 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Input, Label, OptionList, Static
 
-from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices
+from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices, get_open_vat_declarations
 from administracli.excel_io import load_workbook, save_workbook
 from administracli.models import Administracli, Categories, Transaction
 from administracli.reports import balance_sheet, profit_and_loss
@@ -36,24 +36,32 @@ def _cross_booking_balance(data: Administracli) -> Decimal:
     )
 
 
-def _build_options(data: Administracli) -> list[tuple[str, str, str | None]]:
-    """Build (label, category, invoice_id) options for the category picker."""
-    options: list[tuple[str, str, str | None]] = []
+def _build_options(data: Administracli) -> list[tuple[str, str, str | None, str | None]]:
+    """Build (label, category, invoice_id, vat_declaration_id) options for the category picker."""
+    options: list[tuple[str, str, str | None, str | None]] = []
 
     for cat in Categories:
         if cat in (Categories.INCOMING_INVOICE, Categories.OUTGOING_INVOICE):
             continue
-        options.append((str(cat), str(cat), None))
+        options.append((str(cat), str(cat), None, None))
 
     for oi in get_open_incoming_invoices(data):
         inv = oi.invoice
         label = f"⬇ {inv.counterparty}  {inv.amount}  {_fmt_date(inv.date)}  (open: {oi.balance})"
-        options.append((label, str(Categories.INCOMING_INVOICE), inv._id))
+        options.append((label, str(Categories.INCOMING_INVOICE), inv._id, None))
 
     for oi in get_open_outgoing_invoices(data):
         inv = oi.invoice
         label = f"⬆ {inv.counterparty}  {inv.amount}  {_fmt_date(inv.date)}  (open: {oi.balance})"
-        options.append((label, str(Categories.OUTGOING_INVOICE), inv._id))
+        options.append((label, str(Categories.OUTGOING_INVOICE), inv._id, None))
+
+    for ov in get_open_vat_declarations(data):
+        decl = ov.declaration
+        label = (
+            f"🧾 VAT {_fmt_date(decl.period_start_date_inclusive)}–{_fmt_date(decl.period_end_date_exclusive)}"
+            f"  owed: {ov.owed:,.2f}  paid: {ov.paid:,.2f}  (open: {ov.balance:,.2f})"
+        )
+        options.append((label, str(Categories.VAT), None, decl._id))
 
     return options
 
@@ -107,7 +115,7 @@ class CategoriseScreen(Screen):
         self.file_path = file_path
         self.uncategorised = _get_uncategorised(data)
         self._current = 0
-        self._options: list[tuple[str, str, str | None]] = []
+        self._options: list[tuple[str, str, str | None, str | None]] = []
         self._filtered_indices: list[int] = []
 
     def compose(self) -> ComposeResult:
@@ -154,7 +162,7 @@ class CategoriseScreen(Screen):
     def _apply_filter(self, query: str) -> None:
         q = query.lower()
         self._filtered_indices = [
-            i for i, (label, _, _) in enumerate(self._options) if q in label.lower()
+            i for i, (label, _, _, _) in enumerate(self._options) if q in label.lower()
         ]
         option_list = self.query_one("#cat-options", OptionList)
         option_list.clear_options()
@@ -185,7 +193,7 @@ class CategoriseScreen(Screen):
 
     def _select_option(self, filtered_index: int) -> None:
         original_index = self._filtered_indices[filtered_index]
-        _, category, invoice_id = self._options[original_index]
+        _, category, invoice_id, vat_declaration_id = self._options[original_index]
         txn = self.uncategorised[self._current]
         txn._category = category
 
@@ -193,6 +201,8 @@ class CategoriseScreen(Screen):
             txn._incoming_invoice_id = invoice_id
         elif category == str(Categories.OUTGOING_INVOICE) and invoice_id:
             txn._outgoing_invoice_id = invoice_id
+        elif category == str(Categories.VAT) and vat_declaration_id:
+            txn._vat_declaration_id = vat_declaration_id
 
         save_workbook(self.file_path, self.data)
         self._current += 1

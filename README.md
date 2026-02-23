@@ -31,6 +31,17 @@ The definitive CIT amount can be set in the `settings` sheet (`cit_amount`).
 - **Not yet assessed**: advances show as *CIT prepayment* on the balance sheet. Nothing appears in the P&L.
 - **Assessed**: the definitive amount appears as tax expense in the P&L. The difference between advances paid and the definitive amount shows as *CIT receivable* (overpaid) or *CIT payable* (underpaid) on the balance sheet.
 
+## VAT
+
+Add VAT periods in the `vat_declarations` sheet (start date inclusive, end date exclusive).
+Computed fields are recalculated on every run. Amounts are rounded to whole euros (Dutch BTW).
+
+Each **outgoing invoice** requires `vat_rate`. Each **incoming invoice** requires exactly one of:
+`vat_rate`, `vat_rate_abroad_from_outside_eu`, or `vat_rate_abroad_from_inside_eu`.
+All invoice amounts are **including VAT**.
+
+Categorise VAT payments as `VAT`. Link to a declaration via `_vat_declaration_id`, or leave empty for advances.
+
 ## License
 
 AGPL-3.0

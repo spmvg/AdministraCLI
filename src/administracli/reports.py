@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices
+from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices, get_total_vat_position
 from administracli.models import Administracli, Categories
 
 # Balance sheet classification
@@ -27,7 +27,6 @@ COST_CATEGORIES = [
     Categories.INCOMING_INVOICE,
     Categories.GENERAL_COSTS,
     Categories.FINANCIAL_COSTS,
-    Categories.VAT,
 ]
 
 
@@ -67,6 +66,7 @@ def balance_sheet(data: Administracli) -> Panel:
     bank_totals = _sum_by_bank_account(data)
     open_incoming = get_open_incoming_invoices(data)  # creditors
     open_outgoing = get_open_outgoing_invoices(data)  # debtors
+    vat_position = get_total_vat_position(data)  # positive = owe, negative = receivable
 
     # CIT position: advances are negative (money out), so -advances = amount prepaid
     advances = _cit_advances(data)  # negative or zero
@@ -104,6 +104,12 @@ def balance_sheet(data: Administracli) -> Panel:
         for oi in open_outgoing:
             assets_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
         assets_total += debtors_total
+
+    # VAT receivable (overpaid VAT)
+    if vat_position < Decimal(0):
+        assets_table.add_section()
+        assets_table.add_row("VAT receivable", _amount_str(-vat_position))
+        assets_total += -vat_position
 
     # CIT prepayment (asset: overpaid or not yet assessed)
     if cit_receivable > Decimal(0):
@@ -147,6 +153,12 @@ def balance_sheet(data: Administracli) -> Panel:
         for oi in open_incoming:
             eq_table.add_row(f"  {oi.invoice.counterparty}", _amount_str(oi.balance))
         eq_total += creditors_total
+
+    # VAT payable (still owe tax authority)
+    if vat_position > Decimal(0):
+        eq_table.add_section()
+        eq_table.add_row("VAT payable", _amount_str(vat_position))
+        eq_total += vat_position
 
     # CIT payable (liability: still owe more than paid)
     if cit_receivable < Decimal(0):

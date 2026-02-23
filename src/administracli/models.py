@@ -26,6 +26,7 @@ class Transaction:
     _id: SystemField[str]
     _incoming_invoice_id: SystemField[str]
     _outgoing_invoice_id: SystemField[str]
+    _vat_declaration_id: SystemField[str]
     _category: SystemField[str]
 
 @dataclass
@@ -34,19 +35,42 @@ class Invoice:
     amount: Decimal
     counterparty: str
     _id: SystemField[str]
-    _vat_rate: SystemField[Decimal]
 
 @dataclass
 class IncomingInvoice(Invoice):
-    pass
+    vat_rate: Optional[Decimal] = None
+    vat_rate_abroad_from_outside_eu: Optional[Decimal] = None
+    vat_rate_abroad_from_inside_eu: Optional[Decimal] = None
 
 @dataclass
 class OutgoingInvoice(Invoice):
-    pass
+    vat_rate: Decimal
+
+@dataclass
+class VATDeclaration:
+    period_start_date_inclusive: date
+    period_end_date_exclusive: date
+    # Outgoing invoices (revenue)
+    _revenue_ex_vat: SystemField[Decimal]
+    _revenue_vat: SystemField[Decimal]
+    # Incoming invoices from abroad (reverse-charge / verlegde BTW)
+    _reverse_charge_outside_eu_ex_vat: SystemField[Decimal]
+    _reverse_charge_outside_eu_vat: SystemField[Decimal]
+    _reverse_charge_inside_eu_ex_vat: SystemField[Decimal]
+    _reverse_charge_inside_eu_vat: SystemField[Decimal]
+    # Input VAT (deductible, from domestic incoming invoices + reverse-charge)
+    _input_vat: SystemField[Decimal]
+    _id: SystemField[str]
 
 @dataclass
 class Administracli:
     transactions: List[Transaction]
     incoming_invoices: List[IncomingInvoice]
     outgoing_invoices: List[OutgoingInvoice]
+    vat_declarations: List[VATDeclaration] = None
     cit_amount: Optional[Decimal] = None  # definitive corporate income tax; None = not yet assessed
+
+    def __post_init__(self):
+        if self.vat_declarations is None:
+            self.vat_declarations = []
+
