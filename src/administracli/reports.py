@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices, get_total_vat_position
+from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices, get_total_vat_position, _vat_owed
 from administracli.models import Administracli, Categories
 
 # Balance sheet classification
@@ -34,6 +34,15 @@ def _cit_advances(data: Administracli) -> Decimal:
     """Total CIT advance payments (bank outflow, so negative or zero)."""
     totals = _sum_by_category(data)
     return totals.get(str(Categories.CORPORATE_INCOME_TAX), Decimal(0))
+
+
+def _total_vat_from_declarations(data: Administracli) -> Decimal:
+    """Total VAT owed from declarations (before payments).
+
+    The P&L works with incl-VAT amounts, so this must be subtracted
+    from the P&L result to get the true ex-VAT economic result.
+    """
+    return sum((_vat_owed(decl) for decl in data.vat_declarations), Decimal(0))
 
 
 def _sum_by_category(data: Administracli) -> dict[str, Decimal]:
@@ -181,7 +190,11 @@ def balance_sheet(data: Administracli) -> Panel:
 
 
 def _result_before_tax(data: Administracli) -> Decimal:
-    """Compute result before tax from P&L categories and open invoices."""
+    """Compute result before tax from P&L categories and open invoices.
+
+    Transaction and invoice amounts are incl-VAT, so we subtract the
+    total VAT owed from declarations to arrive at the ex-VAT result.
+    """
     totals = _sum_by_category(data)
     open_incoming = get_open_incoming_invoices(data)
     open_outgoing = get_open_outgoing_invoices(data)
@@ -193,6 +206,9 @@ def _result_before_tax(data: Administracli) -> Decimal:
     result += sum(oi.balance for oi in open_outgoing)
     # Open incoming invoices = costs incurred but not yet paid (balance is positive = we owe)
     result -= sum(oi.balance for oi in open_incoming)
+
+    # Subtract VAT owed to tax authority (positive = reduces profit)
+    result -= _total_vat_from_declarations(data)
 
     return result
 
@@ -269,7 +285,11 @@ def profit_and_loss(data: Administracli) -> Panel:
 
     # --- Result before tax ---
     table.add_section()
-    rbt = revenue_total + costs_total
+    vat_owed = _total_vat_from_declarations(data)
+    if vat_owed != Decimal(0):
+        table.add_row("  VAT owed", _amount_str(-vat_owed), "")
+
+    rbt = revenue_total + costs_total - vat_owed
     table.add_row(
         Text("Result before tax", style="bold"),
         "",
