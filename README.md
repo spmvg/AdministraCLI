@@ -3,6 +3,8 @@
 Minimal transaction-matching and invoicing tool for small businesses.
 All data lives in a single local Excel file — no server, no database.
 
+TODO: image
+
 AdministraCLI is **not** a full accounting package. It tracks bank transactions and invoices only — no fixed assets, loans, or depreciation. Create a separate workbook for each reporting year. Because you only enter mutations (bank transactions and invoices), the generated balance sheet shows **differences**, not absolute positions. If your situation requires a complete balance sheet, use AdministraCLI's output as input for one you maintain yourself.
 
 ## Installation
@@ -40,8 +42,4 @@ Each **outgoing invoice** requires `vat_rate`. Each **incoming invoice** require
 `vat_rate`, `vat_rate_abroad_from_outside_eu`, or `vat_rate_abroad_from_inside_eu`.
 All invoice amounts are **including VAT**.
 
-Categorise VAT payments as `VAT`. Link to a declaration via `_vat_declaration_id`, or leave empty for advances.
-
-## License
-
-AGPL-3.0
+Categorise VAT advance payments as `VAT`. Link a transaction to a VAT declaration for definitive payments.
