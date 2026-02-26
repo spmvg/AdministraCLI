@@ -39,7 +39,7 @@ Add periods in `vat_declarations` (start inclusive, end exclusive). Computed fie
 - **Outgoing invoices** require `vat_rate`. Amounts are **including VAT**.
 - **Incoming invoices** require exactly one of `vat_rate`, `vat_rate_abroad_from_outside_eu`, or `vat_rate_abroad_from_inside_eu`. Domestic amounts are **including VAT**; reverse-charge amounts are **excluding VAT**.
 
-Categorise VAT payments as `VAT`. Link to a declaration via `_vat_declaration_id` for definitive payments.
+Categorise VAT payments as `VAT`. Link to a declaration for definitive payments.
 
 ## License
 
