@@ -15,6 +15,7 @@ from administracli.models import (
 )
 from administracli.reports import (
     _sum_by_bank_account,
+    _sum_by_category,
     _cit_advances,
     _net_result,
 )
@@ -122,7 +123,9 @@ class TestVATComputation(unittest.TestCase):
         creditors = sum(oi.balance for oi in get_open_incoming_invoices(data))
         vat_payable = vat_pos if vat_pos > 0 else Decimal(0)
         cit_liability = -cit_receivable if cit_receivable < 0 else Decimal(0)
-        equity = _net_result(data) + creditors + vat_payable + cit_liability
+        totals = _sum_by_category(data)
+        capital = totals.get(str(Categories.CAPITAL), Decimal(0))
+        equity = capital + _net_result(data) + creditors + vat_payable + cit_liability
 
         self.assertEqual(assets, equity)
 
