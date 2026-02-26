@@ -16,9 +16,9 @@ pip install administracli
 ## Usage
 
 ```bash
-python -m administracli init   # create administracli.xlsx
+administracli init   # create administracli.xlsx
 # fill in transactions and invoices in Excel
-python -m administracli run    # categorise and view reports
+administracli run    # categorise and view reports
 ```
 
 `run` walks you through each uncategorised transaction. Open invoices appear alongside categories so you can match them in one step. Once everything is categorised, the balance sheet and P&L are shown.
