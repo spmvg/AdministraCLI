@@ -309,15 +309,17 @@ def _compute_vat_fields(data: Administracli) -> None:
 
             if inv.vat_rate_abroad_from_outside_eu is not None:
                 rate = inv.vat_rate_abroad_from_outside_eu
-                ex_vat = inv.amount / (1 + rate) if rate else inv.amount
-                vat = inv.amount - ex_vat
+                # Reverse-charge: invoice amount IS the ex-VAT amount
+                ex_vat = inv.amount
+                vat = inv.amount * rate if rate else Decimal(0)
                 rc_outside_eu_ex += ex_vat
                 rc_outside_eu_vat += vat
                 input_vat += vat  # reverse-charge VAT is deductible
             elif inv.vat_rate_abroad_from_inside_eu is not None:
                 rate = inv.vat_rate_abroad_from_inside_eu
-                ex_vat = inv.amount / (1 + rate) if rate else inv.amount
-                vat = inv.amount - ex_vat
+                # Reverse-charge: invoice amount IS the ex-VAT amount
+                ex_vat = inv.amount
+                vat = inv.amount * rate if rate else Decimal(0)
                 rc_inside_eu_ex += ex_vat
                 rc_inside_eu_vat += vat
                 input_vat += vat  # reverse-charge VAT is deductible

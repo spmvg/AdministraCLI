@@ -81,32 +81,32 @@ class TestVATComputation(unittest.TestCase):
     def test_revenue_vat(self):
         self.assertEqual(self.decl._revenue_vat, Decimal("63"))
 
-    # -- reverse-charge outside EU (200 incl 21%) --
+    # -- reverse-charge outside EU (200 ex-VAT, 21% RC) --
 
     def test_reverse_charge_outside_eu_ex_vat(self):
-        self.assertEqual(self.decl._reverse_charge_outside_eu_ex_vat, Decimal("165"))
+        self.assertEqual(self.decl._reverse_charge_outside_eu_ex_vat, Decimal("200"))
 
     def test_reverse_charge_outside_eu_vat(self):
-        self.assertEqual(self.decl._reverse_charge_outside_eu_vat, Decimal("35"))
+        self.assertEqual(self.decl._reverse_charge_outside_eu_vat, Decimal("42"))
 
-    # -- reverse-charge inside EU (150 incl 21%) --
+    # -- reverse-charge inside EU (150 ex-VAT, 21% RC) --
 
     def test_reverse_charge_inside_eu_ex_vat(self):
-        self.assertEqual(self.decl._reverse_charge_inside_eu_ex_vat, Decimal("124"))
+        self.assertEqual(self.decl._reverse_charge_inside_eu_ex_vat, Decimal("150"))
 
     def test_reverse_charge_inside_eu_vat(self):
-        self.assertEqual(self.decl._reverse_charge_inside_eu_vat, Decimal("26"))
+        self.assertEqual(self.decl._reverse_charge_inside_eu_vat, Decimal("32"))
 
-    # -- input VAT: domestic 21 + rc_outside 35 + rc_inside 26 = 82 --
+    # -- input VAT: domestic 21 + rc_outside 42 + rc_inside 31.5 = 94.5 → 94 --
 
     def test_input_vat(self):
-        self.assertEqual(self.decl._input_vat, Decimal("82"))
+        self.assertEqual(self.decl._input_vat, Decimal("94"))
 
-    # -- net VAT position (no payments yet) --
+    # -- net VAT position --
 
     def test_vat_position(self):
-        # owed = 63 + 35 + 26 - 82 = 42, paid = 10, position = 32
-        self.assertEqual(get_total_vat_position(self.data), Decimal("32"))
+        # owed = 63 + 42 + 32 - 94 = 43, paid = 10, position = 33
+        self.assertEqual(get_total_vat_position(self.data), Decimal("33"))
 
     def test_balance_sheet_balances(self):
         data = self.data

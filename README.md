@@ -38,7 +38,8 @@ Computed fields are recalculated on every run. Amounts are rounded to whole euro
 
 Each **outgoing invoice** requires `vat_rate`. Each **incoming invoice** requires exactly one of:
 `vat_rate`, `vat_rate_abroad_from_outside_eu`, or `vat_rate_abroad_from_inside_eu`.
-All invoice amounts are **including VAT**.
+Domestic and outgoing invoice amounts are **including VAT**.
+Reverse-charge (foreign) invoice amounts are **excluding VAT**.
 
 Categorise VAT payments as `VAT`. Link to a declaration via `_vat_declaration_id`, or leave empty for advances.
 
