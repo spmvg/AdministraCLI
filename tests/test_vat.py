@@ -105,8 +105,8 @@ class TestVATComputation(unittest.TestCase):
     # -- net VAT position --
 
     def test_vat_position(self):
-        # owed = 63 + 42 + 32 - 94 = 43, paid = 10, position = 33
-        self.assertEqual(get_total_vat_position(self.data), Decimal("33"))
+        # owed = revenue_vat(63) - domestic_input_vat(21) = 42, paid = 10, position = 32
+        self.assertEqual(get_total_vat_position(self.data), Decimal("32"))
 
     def test_balance_sheet_balances(self):
         data = self.data

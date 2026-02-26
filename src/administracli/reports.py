@@ -9,7 +9,13 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from administracli.closing import get_open_incoming_invoices, get_open_outgoing_invoices, get_total_vat_position, _vat_owed
+from administracli.closing import (
+    get_open_incoming_invoices,
+    get_open_outgoing_invoices,
+    get_total_vat_position,
+    compute_revenue_vat,
+    compute_domestic_input_vat,
+)
 from administracli.models import Administracli, Categories
 
 # Balance sheet classification
@@ -35,45 +41,6 @@ def _cit_advances(data: Administracli) -> Decimal:
     totals = _sum_by_category(data)
     return totals.get(str(Categories.CORPORATE_INCOME_TAX), Decimal(0))
 
-
-def _total_vat_from_declarations(data: Administracli) -> Decimal:
-    """Total VAT owed from declarations (before payments)."""
-    return sum((_vat_owed(decl) for decl in data.vat_declarations), Decimal(0))
-
-
-def _total_revenue_vat(data: Administracli) -> Decimal:
-    """Total VAT collected on outgoing invoices (revenue)."""
-    return sum(
-        (decl._revenue_vat or Decimal(0) for decl in data.vat_declarations),
-        Decimal(0),
-    )
-
-
-def _total_input_vat(data: Administracli) -> Decimal:
-    """Total deductible input VAT from incoming invoices (domestic + reverse-charge)."""
-    return sum(
-        (decl._input_vat or Decimal(0) for decl in data.vat_declarations),
-        Decimal(0),
-    )
-
-
-def _total_domestic_input_vat(data: Administracli) -> Decimal:
-    """Input VAT from domestic purchases only (excludes reverse-charge deductions).
-
-    Reverse-charge invoice amounts are already ex-VAT, so only domestic VAT
-    needs to be backed out from the incl-VAT cost totals.
-    """
-    total_input = _total_input_vat(data)
-    # Reverse-charge VAT is both owed and deductible; subtract it from input_vat
-    rc_outside = sum(
-        (decl._reverse_charge_outside_eu_vat or Decimal(0) for decl in data.vat_declarations),
-        Decimal(0),
-    )
-    rc_inside = sum(
-        (decl._reverse_charge_inside_eu_vat or Decimal(0) for decl in data.vat_declarations),
-        Decimal(0),
-    )
-    return total_input - rc_outside - rc_inside
 
 
 def _sum_by_category(data: Administracli) -> dict[str, Decimal]:
@@ -232,12 +199,12 @@ def _result_before_tax(data: Administracli) -> Decimal:
     # Revenue incl. VAT
     revenue = sum((totals.get(str(c), Decimal(0)) for c in REVENUE_CATEGORIES), Decimal(0))
     revenue += sum(oi.balance for oi in open_outgoing)
-    revenue -= _total_revenue_vat(data)  # → revenue ex. VAT
+    revenue -= compute_revenue_vat(data)  # → revenue ex. VAT
 
     # Costs incl. VAT
     costs = sum((totals.get(str(c), Decimal(0)) for c in COST_CATEGORIES), Decimal(0))
     costs -= sum(oi.balance for oi in open_incoming)
-    costs += _total_domestic_input_vat(data)  # → costs ex. VAT (less negative)
+    costs += compute_domestic_input_vat(data)  # → costs ex. VAT (less negative)
 
     return revenue + costs
 
@@ -292,7 +259,7 @@ def profit_and_loss(data: Administracli) -> Panel:
     )
 
     # Subtract VAT collected on revenue
-    rev_vat = _total_revenue_vat(data)
+    rev_vat = compute_revenue_vat(data)
     if rev_vat != Decimal(0):
         table.add_row("  Less: VAT on revenue", "", _amount_str(-rev_vat))
 
@@ -325,7 +292,7 @@ def profit_and_loss(data: Administracli) -> Panel:
     )
 
     # Add back deductible domestic input VAT (costs are negative, input VAT makes them less negative)
-    inp_vat = _total_domestic_input_vat(data)
+    inp_vat = compute_domestic_input_vat(data)
     if inp_vat != Decimal(0):
         table.add_row("  Less: deductible input VAT", "", _amount_str(inp_vat))
 

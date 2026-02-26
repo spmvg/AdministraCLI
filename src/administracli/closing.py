@@ -50,6 +50,65 @@ def get_open_outgoing_invoices(data: Administracli) -> list[OpenInvoice]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Invoice-based VAT totals (independent of VAT declarations)
+# ---------------------------------------------------------------------------
+
+def compute_revenue_vat(data: Administracli) -> Decimal:
+    """VAT on outgoing invoices (revenue). Amounts are incl. VAT."""
+    total = Decimal(0)
+    for inv in data.outgoing_invoices:
+        rate = inv.vat_rate
+        if rate:
+            total += inv.amount - inv.amount / (1 + rate)
+    return total
+
+
+def compute_domestic_input_vat(data: Administracli) -> Decimal:
+    """Input VAT from domestic incoming invoices only. Amounts are incl. VAT."""
+    total = Decimal(0)
+    for inv in data.incoming_invoices:
+        if inv.vat_rate_abroad_from_outside_eu is not None:
+            continue
+        if inv.vat_rate_abroad_from_inside_eu is not None:
+            continue
+        rate = inv.vat_rate
+        if rate:
+            total += inv.amount - inv.amount / (1 + rate)
+    return total
+
+
+def compute_reverse_charge_vat(data: Administracli) -> Decimal:
+    """VAT from reverse-charge invoices (both owed and deductible, net zero).
+
+    Reverse-charge invoice amounts are ex-VAT, so VAT = amount * rate.
+    """
+    total = Decimal(0)
+    for inv in data.incoming_invoices:
+        if inv.vat_rate_abroad_from_outside_eu is not None:
+            rate = inv.vat_rate_abroad_from_outside_eu
+            if rate:
+                total += inv.amount * rate
+        elif inv.vat_rate_abroad_from_inside_eu is not None:
+            rate = inv.vat_rate_abroad_from_inside_eu
+            if rate:
+                total += inv.amount * rate
+    return total
+
+
+def compute_total_vat_owed(data: Administracli) -> Decimal:
+    """Total VAT owed from all invoices (before payments).
+
+    owed = revenue VAT + reverse-charge VAT - (domestic input VAT + reverse-charge VAT)
+         = revenue VAT - domestic input VAT
+    """
+    return compute_revenue_vat(data) - compute_domestic_input_vat(data)
+
+
+# ---------------------------------------------------------------------------
+# Declaration-level helpers (for declaration worksheet display)
+# ---------------------------------------------------------------------------
+
 def _vat_owed(decl: VATDeclaration) -> Decimal:
     """Net VAT owed for a single declaration period.
 
@@ -83,9 +142,12 @@ def get_open_vat_declarations(data: Administracli) -> list[OpenVATDeclaration]:
 
 
 def get_total_vat_position(data: Administracli) -> Decimal:
-    """Net VAT position across all declarations. Positive = owe, negative = receivable.
-    Also includes unlinked VAT advances (VAT transactions without a declaration id)."""
-    total = sum((_vat_owed(decl) for decl in data.vat_declarations), Decimal(0))
+    """Net VAT position: total owed from invoices + all VAT payments.
+
+    Computed from invoices directly so it works with or without declarations.
+    Positive = owe, negative = receivable.
+    """
+    total = compute_total_vat_owed(data)
 
     # All VAT-category payments (linked or not)
     vat_payments = sum(
