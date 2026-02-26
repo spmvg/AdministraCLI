@@ -37,12 +37,43 @@ def _cit_advances(data: Administracli) -> Decimal:
 
 
 def _total_vat_from_declarations(data: Administracli) -> Decimal:
-    """Total VAT owed from declarations (before payments).
-
-    The P&L works with incl-VAT amounts, so this must be subtracted
-    from the P&L result to get the true ex-VAT economic result.
-    """
+    """Total VAT owed from declarations (before payments)."""
     return sum((_vat_owed(decl) for decl in data.vat_declarations), Decimal(0))
+
+
+def _total_revenue_vat(data: Administracli) -> Decimal:
+    """Total VAT collected on outgoing invoices (revenue)."""
+    return sum(
+        (decl._revenue_vat or Decimal(0) for decl in data.vat_declarations),
+        Decimal(0),
+    )
+
+
+def _total_input_vat(data: Administracli) -> Decimal:
+    """Total deductible input VAT from incoming invoices (domestic + reverse-charge)."""
+    return sum(
+        (decl._input_vat or Decimal(0) for decl in data.vat_declarations),
+        Decimal(0),
+    )
+
+
+def _total_domestic_input_vat(data: Administracli) -> Decimal:
+    """Input VAT from domestic purchases only (excludes reverse-charge deductions).
+
+    Reverse-charge invoice amounts are already ex-VAT, so only domestic VAT
+    needs to be backed out from the incl-VAT cost totals.
+    """
+    total_input = _total_input_vat(data)
+    # Reverse-charge VAT is both owed and deductible; subtract it from input_vat
+    rc_outside = sum(
+        (decl._reverse_charge_outside_eu_vat or Decimal(0) for decl in data.vat_declarations),
+        Decimal(0),
+    )
+    rc_inside = sum(
+        (decl._reverse_charge_inside_eu_vat or Decimal(0) for decl in data.vat_declarations),
+        Decimal(0),
+    )
+    return total_input - rc_outside - rc_inside
 
 
 def _sum_by_category(data: Administracli) -> dict[str, Decimal]:
@@ -192,25 +223,23 @@ def balance_sheet(data: Administracli) -> Panel:
 def _result_before_tax(data: Administracli) -> Decimal:
     """Compute result before tax from P&L categories and open invoices.
 
-    Transaction and invoice amounts are incl-VAT, so we subtract the
-    total VAT owed from declarations to arrive at the ex-VAT result.
+    Revenue and costs are converted to ex-VAT using declaration fields.
     """
     totals = _sum_by_category(data)
     open_incoming = get_open_incoming_invoices(data)
     open_outgoing = get_open_outgoing_invoices(data)
 
-    pl_categories = list(REVENUE_CATEGORIES) + list(COST_CATEGORIES)
-    result = sum((totals.get(str(c), Decimal(0)) for c in pl_categories), Decimal(0))
+    # Revenue incl. VAT
+    revenue = sum((totals.get(str(c), Decimal(0)) for c in REVENUE_CATEGORIES), Decimal(0))
+    revenue += sum(oi.balance for oi in open_outgoing)
+    revenue -= _total_revenue_vat(data)  # → revenue ex. VAT
 
-    # Open outgoing invoices = revenue earned but not yet received
-    result += sum(oi.balance for oi in open_outgoing)
-    # Open incoming invoices = costs incurred but not yet paid (balance is positive = we owe)
-    result -= sum(oi.balance for oi in open_incoming)
+    # Costs incl. VAT
+    costs = sum((totals.get(str(c), Decimal(0)) for c in COST_CATEGORIES), Decimal(0))
+    costs -= sum(oi.balance for oi in open_incoming)
+    costs += _total_domestic_input_vat(data)  # → costs ex. VAT (less negative)
 
-    # Subtract VAT owed to tax authority (positive = reduces profit)
-    result -= _total_vat_from_declarations(data)
-
-    return result
+    return revenue + costs
 
 
 def _cit_expense(data: Administracli) -> Decimal:
@@ -257,9 +286,21 @@ def profit_and_loss(data: Administracli) -> Panel:
         revenue_total += debtors_total
 
     table.add_row(
-        Text("Total revenue", style="bold"),
+        Text("Revenue incl. VAT", style="bold"),
         "",
         Text(_amount_str(revenue_total), style="bold"),
+    )
+
+    # Subtract VAT collected on revenue
+    rev_vat = _total_revenue_vat(data)
+    if rev_vat != Decimal(0):
+        table.add_row("  Less: VAT on revenue", "", _amount_str(-rev_vat))
+
+    revenue_ex_vat = revenue_total - rev_vat
+    table.add_row(
+        Text("Revenue ex. VAT", style="bold"),
+        "",
+        Text(_amount_str(revenue_ex_vat), style="bold"),
     )
     table.add_row("", "", "")
 
@@ -278,18 +319,26 @@ def profit_and_loss(data: Administracli) -> Panel:
         costs_total -= creditors_total
 
     table.add_row(
-        Text("Total costs", style="bold"),
+        Text("Costs incl. VAT", style="bold"),
         "",
         Text(_amount_str(costs_total), style="bold"),
     )
 
+    # Add back deductible domestic input VAT (costs are negative, input VAT makes them less negative)
+    inp_vat = _total_domestic_input_vat(data)
+    if inp_vat != Decimal(0):
+        table.add_row("  Less: deductible input VAT", "", _amount_str(inp_vat))
+
+    costs_ex_vat = costs_total + inp_vat
+    table.add_row(
+        Text("Costs ex. VAT", style="bold"),
+        "",
+        Text(_amount_str(costs_ex_vat), style="bold"),
+    )
+
     # --- Result before tax ---
     table.add_section()
-    vat_owed = _total_vat_from_declarations(data)
-    if vat_owed != Decimal(0):
-        table.add_row("  VAT owed", _amount_str(-vat_owed), "")
-
-    rbt = revenue_total + costs_total - vat_owed
+    rbt = revenue_ex_vat + costs_ex_vat
     table.add_row(
         Text("Result before tax", style="bold"),
         "",
