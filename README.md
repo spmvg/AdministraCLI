@@ -1,6 +1,6 @@
 # AdministraCLI
 
-Minimal transaction-matching and invoicing tool for small businesses.
+Minimal administration tool for small businesses.
 All data lives in a single local Excel file — no server, no database.
 
 ![Balance sheet and P&L](examples/example_report.png)
